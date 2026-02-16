@@ -1,46 +1,38 @@
+import asyncio
 import os
+from decimal import Decimal
+
 import django
+from django.utils import timezone
 from dotenv import load_dotenv
 
 load_dotenv()
-
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'tengecash.settings')
 django.setup()
 
-from asgiref.sync import sync_to_async
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.filters import Command
 from asgiref.sync import sync_to_async
 
 from tengecash.users.models import User
+from tengecash.categories.models import Category
+from tengecash.sections.models import Section
+from tengecash.expenses.models import Expense
+
+BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
 
-@sync_to_async
-def link_user(tg_id, username):
-    try:
-        user = User.objects.get(username='admin')
-        if not user.telegram_id:
-            user.telegram_id = tg_id
-            user.save()
-            return f'Приятно познакомиться, {user.username}! Твой Telegram привязан.'
-        return f'С возвращением, {user.username}!'
-    except User.DoesNotExist:
-        return "Пользователь не найден."
+@dp.message(Command("start"))
+async def handle_start(message: Message):
+    await message.answer('Привет! Я - Tenge Cash Bot!')
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = update.effective_user.id
-    message = await link_user(tg_id, update.effective_user.username)
-    await update.message.reply_text(message)
+async def main():
+    print('Бот запущен...')
+    await dp.start_polling(bot)
 
 
-if __name__ == '__main__':
-    # Читаем токен из переменных окружения
-    TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-
-    application = ApplicationBuilder().token(TOKEN).build()
-
-    start_handler = CommandHandler('start', start)
-    application.add_handler(start_handler)
-
-    print("Бот запущен...")
-    application.run_polling()
+if __name__ == "__main__":
+    asyncio.run(main())
