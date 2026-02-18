@@ -3,6 +3,7 @@ import os
 from decimal import Decimal
 
 import django
+from django.contrib.auth import authenticate
 from django.utils import timezone
 from dotenv import load_dotenv
 
@@ -25,9 +26,86 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
+HELP_COMMAND = """
+/info - инструкция по внесению трат
+/start - начать работу с ботом
+/login - регистрация в Tenge Cash
+/logout - выход из бота
+
+/catlist - список категорий
+/catedit - редактировать список категорий
+
+/list - список последних 10-ти расходов
+/total - сумма расходов за текущий месяц
+
+/site - перейти на веб-сайт Tenge Cash
+"""
+
+@sync_to_async
+def get_user_by_tg_id(tg_id):
+    return User.objects.filter(telegram_id=tg_id).first()
+
 @dp.message(Command("start"))
 async def handle_start(message: Message):
-    await message.answer('Привет! Я - Tenge Cash Bot!')
+    tg_id = message.from_user.id
+    user = await get_user_by_tg_id(tg_id)
+    if user:
+        await message.answer(f'С возвращением, {user.username}!')
+    else:
+        await message.answer(
+            "Я тебя не знаю. Твой Telegram ID не привязан к аккаунту Tenge Cash.\n"
+            "Пожалуйста, введи команду для привязки (например: `/login твой_логин`)"
+        )
+
+
+@sync_to_async
+def bind_user_with_password(tg_id, django_username, password):
+    user = authenticate(username=django_username, password=password)
+    if user is not None:
+        user.telegram_id = tg_id
+        user.save()
+        return f"Получилось! Аккаунт {django_username} привязан к боту!"
+    return "Ошибка: Пользователь с таким именем не найден в базе данных"
+
+
+@dp.message(Command("login"))
+async def handle_login(message: Message):
+    args = message.text.split()
+    if len(args) < 3:
+        await message.answer("Введи: /login логин пароль")
+        return
+    result = await bind_user_with_password(message.from_user.id, args[1], args[2])
+    await message.answer(result)
+    await message.delete()
+
+
+@sync_to_async
+def logout_user_db(tg_id):
+    user = User.objects.filter(telegram_id=tg_id).first()
+    if user:
+        user.telegram_id = None
+        user.save()
+        return True
+    return False
+
+@dp.message(Command("logout"))
+async def handle_logout(message: Message):
+    success = await logout_user_db(message.from_user.id)
+    if success:
+        await message.answer('Выход выполнен успешно. Для повторного входа выполни команду /login')
+    else:
+        await message.answer('Ты не был авторизован')
+
+
+@dp.message(Command("help"))
+async def handle_help(message: Message):
+    await message.answer(text=HELP_COMMAND)
+
+
+@dp.message(Command("info"))
+async def handle_info(message: Message):
+    await message.answer('Ввели трату в формате "Трата Сумма", например "Кофе 1000"')
+
 
 async def main():
     print('Бот запущен...')
