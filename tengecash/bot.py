@@ -53,8 +53,9 @@ async def handle_start(message: Message):
         await message.answer(f'С возвращением, {user.username}!')
     else:
         await message.answer(
-            "Я тебя не знаю. Твой Telegram ID не привязан к аккаунту Tenge Cash.\n"
-            "Пожалуйста, введи команду для привязки (например: `/login твой_логин`)"
+            "Упс... Ты не авторизован.\n"
+            "Пожалуйста, введи команду для привязки:\n"
+            "/login логин пароль"
         )
 
 
@@ -64,7 +65,7 @@ def bind_user_with_password(tg_id, django_username, password):
     if user is not None:
         user.telegram_id = tg_id
         user.save()
-        return f"Получилось! Аккаунт {django_username} привязан к боту!"
+        return f"Получилось! Ты вошел как пользователь {django_username}!"
     return "Ошибка: Пользователь с таким именем не найден в базе данных"
 
 
