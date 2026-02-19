@@ -35,6 +35,7 @@ HELP_COMMAND = """
 /logout - выход из бота
 
 /catlist - список категорий
+/catadd - создать новую категорию
 /catedit - редактировать список категорий
 
 /list - список последних 10-ти расходов
@@ -147,6 +148,7 @@ async def handle_catlist(message: Message):
 class CategoryEditStates(StatesGroup):
     selecting_category = State()
     remaining_category = State()
+    waiting_for_new_cat_name = State()
 
 @dp.message(Command("catedit"))
 async def handle_catedit(message: Message):
@@ -198,13 +200,54 @@ async def process_new_name(message: Message, state: FSMContext):
     if await category_exists(user, new_name):
         await message.answer(
             f"❌ Категория с именем <b>{new_name}</b> уже существует!\n"
-            "Введи другое название:"
+            "Введи другое название:",
+            parse_mode="HTML"
         )
         return
 
     await update_category_name(cat_id, new_name)
 
-    await message.answer(f"✅ Категория успешно переименована в: <b>{new_name}</b>")
+    await message.answer(
+        f"✅ Категория успешно переименована в: <b>{new_name}</b>",
+            parse_mode="HTML"
+    )
+    await state.clear()
+
+
+@sync_to_async
+def create_category(user, name):
+    return Category.objects.create(user=user, name=name)
+
+@dp.message(Command("catadd"))
+async def handle_category_create(message: Message, state: FSMContext):
+    tg_id = message.from_user.id
+    user = await get_user_by_tg_id(tg_id)
+
+    if not user:
+        await message.answer("Сначала нужно авторизоваться, используй /login")
+        return
+
+    await message.answer("Введи название новой категории:")
+    await state.set_state(CategoryEditStates.waiting_for_new_cat_name)
+
+@dp.message(CategoryEditStates.waiting_for_new_cat_name)
+async def process_add_category(message: Message, state: FSMContext):
+    new_cat_name = message.text.strip()
+    user = await get_user_by_tg_id(message.from_user.id)
+
+    if await category_exists(user, new_cat_name):
+        await message.answer(
+            f"❌ Категория с именем <b>{new_cat_name}</b> уже существует!\n"
+            "Введи другое название:",
+            parse_mode="HTML"
+        )
+        return
+
+    await create_category(user, new_cat_name)
+    await message.answer(
+        f"✅ Категория <b>{new_cat_name}</b> успешно создана!",
+            parse_mode="HTML"
+    )
     await state.clear()
 
 
