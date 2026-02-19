@@ -116,6 +116,34 @@ async def handle_logout(message: Message):
         await message.answer('Ты не был авторизован')
 
 
+@sync_to_async
+def get_categoies_db(user):
+    return list(Category.objects.filter(user=user))
+
+@dp.message(Command("catlist"))
+async def handle_catlist(message: Message):
+    tg_id = message.from_user.id
+    user = await get_user_by_tg_id(tg_id)
+
+    if not user:
+        await message.answer("Сначала нужно авторизоваться, используй /login")
+        return
+
+    categories = await get_categoies_db(user)
+    if not categories:
+        await message.answer(
+            "В базе пока нет категорий."
+            "Добавь их в браузерной версии /site или при помощи команды /catedit."
+        )
+        return
+
+    response_text = '<b>📁 Твои категории расходов:</b>\n\n'
+    for index, cat in enumerate(categories, start=1):
+        # section_name = cat.section.name if cat.section else "Без раздела"
+        response_text += f"{index}. {cat.name}\n"
+    await message.answer(response_text, parse_mode="HTML")
+
+
 @dp.message(Command("help"))
 async def handle_help(message: Message):
     await message.answer(text=HELP_COMMAND)
