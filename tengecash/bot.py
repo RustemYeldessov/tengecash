@@ -37,6 +37,7 @@ HELP_COMMAND = """
 /catlist - список категорий
 /catadd - создать новую категорию
 /catedit - редактировать список категорий
+/catdelete - удалить категорию и ее содержимое
 
 /list - список последних 10-ти расходов
 /total - сумма расходов за текущий месяц
@@ -134,7 +135,7 @@ async def handle_catlist(message: Message):
     if not categories:
         await message.answer(
             "В базе пока нет категорий."
-            "Добавь их в браузерной версии /site или при помощи команды /catedit."
+            "Добавь их в браузерной версии /site или при помощи команды /catadd."
         )
         return
 
@@ -163,7 +164,7 @@ async def handle_catedit(message: Message):
     if not categories:
         await message.answer(
             "В базе пока нет категорий."
-            "Добавь их в браузерной версии /site или при помощи команды /catedit."
+            "Добавь их в браузерной версии /site или при помощи команды /catadd."
         )
         return
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -249,6 +250,69 @@ async def process_add_category(message: Message, state: FSMContext):
             parse_mode="HTML"
     )
     await state.clear()
+
+
+@sync_to_async
+def category_delete(user, cat_id):
+    return Category.objects.filter(id=cat_id, user=user).delete()
+
+@dp.message(Command("catdelete"))
+async def handle_category_delete(message: Message):
+    tg_id = message.from_user.id
+    user = await get_user_by_tg_id(tg_id)
+
+    if not user:
+        await message.answer("Сначала нужно авторизоваться, используй /login")
+        return
+
+    categories = await get_categoies_db(user)
+    if not categories:
+        await message.answer(
+            "В базе пока нет категорий."
+            "Добавь их в браузерной версии /site или при помощи команды /catadd."
+        )
+        return
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"❌ {cat.name}", callback_data=f"delete_{cat.id}")]
+        for cat in categories
+    ])
+    await message.answer("Выбери категорию для удаления:", reply_markup=keyboard)
+
+@dp.callback_query(F.data.startswith("delete_"))
+async def process_delete_category(callback: CallbackQuery):
+    cat_id = callback.data.split("_")[1]
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Да, удалить ✅", callback_data=f"confirm_delete_{cat_id}"),
+            InlineKeyboardButton(text="Отмена ❌", callback_data=f"cancel_delete")
+        ]
+    ])
+
+    await callback.message.edit_text(
+        "⚠️ <b>Внимание!</b>\n"
+        "При удалении категории удалятся и все расходы, связанные с ней.\n"
+        "Ты уверен?",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("confirm_delete_"))
+async def confirm_delete(callback: CallbackQuery):
+    cat_id = callback.data.split("_")[2]
+    tg_id = callback.from_user.id
+    user = await get_user_by_tg_id(tg_id)
+
+    await category_delete(user, cat_id)
+
+    await callback.message.edit_text("✅ Категория и все её расходы успешно удалены.")
+    await callback.answer()
+
+@dp.callback_query(F.data == "cancel_delete")
+async def cancel_delete(callback: CallbackQuery):
+    await callback.message.edit_text("Действие отменено. Данные в сохранности! 😌")
+    await callback.answer()
 
 
 @dp.message(Command("help"))
