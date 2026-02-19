@@ -144,6 +144,57 @@ async def handle_catlist(message: Message):
     await message.answer(response_text, parse_mode="HTML")
 
 
+class CategoryEditStates(StatesGroup):
+    selecting_category = State()
+    remaining_category = State()
+
+@dp.message(Command("catedit"))
+async def handle_catedit(message: Message):
+    tg_id = message.from_user.id
+    user = await get_user_by_tg_id(tg_id)
+
+    if not user:
+        await message.answer("Сначала нужно авторизоваться, используй /login")
+        return
+
+    categories = await get_categoies_db(user)
+    if not categories:
+        await message.answer(
+            "В базе пока нет категорий."
+            "Добавь их в браузерной версии /site или при помощи команды /catedit."
+        )
+        return
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"✏️ {cat.name}", callback_data=f"edit_{cat.id}")]
+        for cat in categories
+    ])
+    await message.answer("Выбери категорию для редактирования:", reply_markup=keyboard)
+
+@sync_to_async
+def update_category_name(cat_id, new_name):
+    Category.objects.filter(id=cat_id).update(name=new_name)
+
+@dp.callback_query(F.data.startswith("edit_"))
+async def process_edit_category(callback: CallbackQuery, state: FSMContext):
+    cat_id = callback.data.split("_")[1]
+    await state.update_data(editing_cat_id=cat_id)
+
+    await callback.message.edit_text("Введи новое название для этой категории:")
+    await state.set_state(CategoryEditStates.remaining_category)
+    await callback.answer()
+
+@dp.message(CategoryEditStates.remaining_category)
+async def process_new_name(message: Message, state: FSMContext):
+    data = await state.get_data()
+    cat_id = data.get("editing_cat_id")
+    new_name = message.text
+
+    await update_category_name(cat_id, new_name)
+
+    await message.answer(f"✅ Категория успешно переименована в: <b>{new_name}</b>")
+    await state.clear()
+
+
 @dp.message(Command("help"))
 async def handle_help(message: Message):
     await message.answer(text=HELP_COMMAND)
