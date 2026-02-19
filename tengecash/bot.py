@@ -183,11 +183,24 @@ async def process_edit_category(callback: CallbackQuery, state: FSMContext):
     await state.set_state(CategoryEditStates.remaining_category)
     await callback.answer()
 
+@sync_to_async
+def category_exists(user, name):
+    return Category.objects.filter(user=user, name__iexact=name).exists()
+
 @dp.message(CategoryEditStates.remaining_category)
 async def process_new_name(message: Message, state: FSMContext):
     data = await state.get_data()
     cat_id = data.get("editing_cat_id")
-    new_name = message.text
+    new_name = message.text.strip()
+
+    user = await get_user_by_tg_id(message.from_user.id)
+
+    if await category_exists(user, new_name):
+        await message.answer(
+            f"❌ Категория с именем <b>{new_name}</b> уже существует!\n"
+            "Введи другое название:"
+        )
+        return
 
     await update_category_name(cat_id, new_name)
 
