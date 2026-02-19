@@ -15,6 +15,8 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.filters import Command
 from asgiref.sync import sync_to_async
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 
 from tengecash.users.models import User
 from tengecash.categories.models import Category
@@ -41,6 +43,11 @@ HELP_COMMAND = """
 /site - перейти на веб-сайт Tenge Cash
 """
 
+class LoginStates(StatesGroup):
+    waiting_for_username = State()
+    waiting_for_password = State()
+
+
 @sync_to_async
 def get_user_by_tg_id(tg_id):
     return User.objects.filter(telegram_id=tg_id).first()
@@ -54,8 +61,7 @@ async def handle_start(message: Message):
     else:
         await message.answer(
             "Упс... Ты не авторизован.\n"
-            "Пожалуйста, введи команду для привязки:\n"
-            "/login логин пароль"
+            "Пожалуйста, введи команду для привязки: /login"
         )
 
 
@@ -70,14 +76,26 @@ def bind_user_with_password(tg_id, django_username, password):
 
 
 @dp.message(Command("login"))
-async def handle_login(message: Message):
-    args = message.text.split()
-    if len(args) < 3:
-        await message.answer("Введи: /login логин пароль")
-        return
-    result = await bind_user_with_password(message.from_user.id, args[1], args[2])
-    await message.answer(result)
+async def handle_login(message: Message, state: FSMContext):
+    await message.answer("Введи логин:")
+    await state.set_state(LoginStates.waiting_for_username)
+
+@dp.message(LoginStates.waiting_for_username)
+async def process_username(message: Message, state: FSMContext):
+    await state.update_data(chosen_username=message.text)
+    await message.answer("Введи пароль:")
+    await state.set_state(LoginStates.waiting_for_password)
+
+@dp.message(LoginStates.waiting_for_password)
+async def process_password(message: Message, state: FSMContext):
+    user_data = await state.get_data()
+    username = user_data['chosen_username']
+    password = message.text
+
     await message.delete()
+    result = await bind_user_with_password(message.from_user.id, username, password)
+    await message.answer(result)
+    await state.clear()
 
 
 @sync_to_async
